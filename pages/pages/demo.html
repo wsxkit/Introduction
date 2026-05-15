@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>迅雷扫描枪</title>
+		<style type="text/css">
+			#times
+			{
+				width: 500px;
+				height: 25px;
+			}
+            #data{
+                width: 500px;
+                height: 25px;
+                border: 3px solid gray;  /*如果不加实线无法显示边框*/
+            }
+        </style>
+		<script>
+			let lastTime = null;
+			let nextTime = null;
+			let code = '';
+			document.onkeypress = function (e) {
+			  let keycode = e.keyCode || e.which || e.charCode;
+			  nextTime = new Date();
+			  if (keycode === 13) {
+				if (lastTime && (nextTime - lastTime < 50)) {
+				  console.log(code);
+				  getDate();
+				  document.getElementById("data").innerHTML=code;
+				} else {
+				  window.alert('请不要使用键盘输入');
+				}
+				code = '';
+				lastTime = null;
+				e.preventDefault();
+			  } else {
+				if (!lastTime) {
+				  code = String.fromCharCode(keycode);
+				} else {
+				  if (nextTime - lastTime < 30) {
+					code += String.fromCharCode(keycode);
+				  } else {
+					code = '';
+				  }
+				}
+				lastTime = nextTime;
+			  }
+			};
+			//得到时间并写入div
+			function getDate(){
+				//获取当前时间
+				var date = new Date();
+				//格式化为本地时间格式
+				var date1 = date.toLocaleString();
+				//获取div
+                var div1 = document.getElementById("times");
+                //将时间写入div
+                div1.innerHTML = date1;
+            };
+	
+</script>
+</head>
+<body>
+<div id="times"></div>
+<div id="data">请使用扫描枪扫码条码</div>
+</body>
+</html>
