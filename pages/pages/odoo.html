@@ -3,15 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Odoo Barcode-like Listener Test</title>
+  <title>Odoo Barcode-like Full Page Listener Test</title>
   <style>
     :root {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: #111827;
       background: #f3f4f6;
     }
-    body {
+    html, body {
       margin: 0;
+      min-height: 100%;
+    }
+    body {
       padding: 16px;
     }
     h1 {
@@ -24,6 +27,23 @@
       line-height: 1.65;
       margin-bottom: 16px;
     }
+    .page-listener {
+      border: 2px solid #111827;
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .page-listener-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .page-listener-subtitle {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.5;
+    }
     .card {
       background: #fff;
       border: 1px solid #e5e7eb;
@@ -31,33 +51,6 @@
       padding: 14px;
       margin-bottom: 12px;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    }
-    .scan-area {
-      min-height: 150px;
-      border: 2px dashed #9ca3af;
-      border-radius: 12px;
-      background: #f9fafb;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 18px;
-      outline: none;
-      user-select: none;
-    }
-    .scan-area:focus {
-      border-color: #111827;
-      background: #fff;
-    }
-    .scan-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .scan-subtitle {
-      font-size: 13px;
-      color: #6b7280;
-      line-height: 1.5;
     }
     label {
       display: block;
@@ -94,7 +87,7 @@
     textarea {
       width: 100%;
       box-sizing: border-box;
-      min-height: 180px;
+      min-height: 190px;
       resize: vertical;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
@@ -121,37 +114,25 @@
     .ok { color: #047857; font-weight: 800; }
     .warn { color: #b45309; font-weight: 800; }
     .bad { color: #b91c1c; font-weight: 800; }
-    .pill {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #e5e7eb;
-      margin-right: 6px;
-      font-size: 12px;
-      font-weight: 700;
-    }
   </style>
 </head>
 <body>
-  <h1>Odoo Barcode-like 无输入框监听测试页</h1>
+  <h1>Odoo Barcode-like 全页监听测试页</h1>
+
   <div class="hint">
-    这个页面模拟 Odoo Barcode 这类 Web 应用常见的“无输入框、监听全局键盘事件”的方式。
-    页面不会使用文本输入框接收条码，而是监听 <b>document/window</b> 上的 <b>keydown / keypress / keyup / beforeinput / input / paste</b>。
+    这个页面模拟 Odoo Barcode 这类 Web 应用的“无输入框、全页键盘监听”方式。
+    页面没有用于扫码的 input/textarea，也不需要点击固定扫码区域。
+    打开页面后，直接扫描即可。
     <br>
-    测试重点：如果扫描正文只能通过 Android <b>KeyMultiple / chars</b> 进入输入框，那么在这种无输入框页面里可能无法被 JavaScript 捕获为逐字符扫描。
+    测试重点：确认 PDA 扫描正文是否能作为 <b>逐字符 keydown / keypress / keyup</b> 被网页全局监听捕获。
   </div>
 
-  <div class="card">
-    <div id="scanArea" class="scan-area" tabindex="0">
-      <div>
-        <div class="scan-title">点击这里聚焦后直接扫描</div>
-        <div class="scan-subtitle">
-          不要点击任何输入框。本区域只是可聚焦容器，不是 input/textarea。<br>
-          建议分别测试：无后缀、Enter 后缀、Tab 后缀。
-        </div>
-      </div>
+  <div class="page-listener">
+    <div class="page-listener-title">全页监听已启用：直接扫描</div>
+    <div class="page-listener-subtitle">
+      当前监听范围：document + window。不要点击输入框，本页不会依赖输入框接收条码。
+      建议测试：无后缀、Enter 后缀、Tab 后缀。
     </div>
-    <button id="focusBtn">聚焦监听区域</button>
     <button id="clearBtn" class="secondary">清空记录</button>
     <button id="copyBtn" class="secondary">复制日志</button>
     <button id="preventBtn" class="danger">切换 preventDefault：关闭</button>
@@ -159,7 +140,7 @@
 
   <div class="card">
     <label>实时状态</label>
-    <div id="liveStatus" class="status">等待扫描...</div>
+    <div id="liveStatus" class="status">等待扫描。当前页面任意位置都可以直接扫描。</div>
   </div>
 
   <div class="card">
@@ -184,6 +165,7 @@
         <tr>
           <th>#</th>
           <th>time</th>
+          <th>listener</th>
           <th>target</th>
           <th>type</th>
           <th>key</th>
@@ -198,8 +180,6 @@
 
 <script>
 (() => {
-  const scanArea = document.getElementById("scanArea");
-  const focusBtn = document.getElementById("focusBtn");
   const clearBtn = document.getElementById("clearBtn");
   const copyBtn = document.getElementById("copyBtn");
   const preventBtn = document.getElementById("preventBtn");
@@ -214,13 +194,11 @@
   let buffer = "";
   let lastCharAt = 0;
   let scanTimer = null;
+  let diagnoseTimer = null;
   let lastScan = "";
+  let lastFinishReason = "";
   let preventDefaultEnabled = false;
 
-  // 模拟 Odoo 类扫码逻辑：
-  // 1. 监听全局 keydown/keypress。
-  // 2. 收集短时间内连续输入的字符。
-  // 3. 遇到 Enter/Tab，或字符停止一段时间，判定为一次扫描。
   const SCAN_GAP_MS = 80;
   const SCAN_FINISH_DELAY_MS = 120;
   const MIN_SCAN_LENGTH = 2;
@@ -255,6 +233,7 @@
     tr.innerHTML = `
       <td>${item.seq}</td>
       <td>${item.time}</td>
+      <td>${item.listener}</td>
       <td>${item.target}</td>
       <td>${item.type}</td>
       <td>${printable(item.key)}</td>
@@ -269,7 +248,8 @@
     const item = {
       seq: ++seq,
       time: nowMs() + "ms",
-      target: listenerName + " " + targetName(e),
+      listener: listenerName,
+      target: targetName(e),
       type: e.type,
       key: e.key,
       code: e.code,
@@ -278,13 +258,16 @@
     };
 
     events.push(item);
+
     log(
-      `#${item.seq} ${item.time} [${item.target}] ${item.type}` +
+      `#${item.seq} ${item.time} [${item.listener}] target=${item.target}` +
+      ` type=${item.type}` +
       ` key=${printable(item.key)}` +
       ` code=${printable(item.code)}` +
       ` keyCode=${printable(item.keyCode)}` +
       (item.extra ? ` ${item.extra}` : "")
     );
+
     addTableRow(item);
     scheduleDiagnosis();
 
@@ -297,17 +280,18 @@
     return e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey;
   }
 
-  function feedScannerBuffer(e, source) {
+  function feedScannerBuffer(e) {
     const t = performance.now();
 
     if (isPrintableKey(e)) {
       if (lastCharAt && (t - lastCharAt) > SCAN_GAP_MS) {
-        // 输入间隔过大，认为上一段结束
         finishScan("gap-timeout");
       }
+
       buffer += e.key;
       lastCharAt = t;
       liveStatus.textContent = `正在收集字符：${buffer}`;
+
       clearTimeout(scanTimer);
       scanTimer = setTimeout(() => finishScan("idle-timeout"), SCAN_FINISH_DELAY_MS);
       return;
@@ -329,12 +313,13 @@
 
     if (buffer.length >= MIN_SCAN_LENGTH) {
       lastScan = buffer;
+      lastFinishReason = reason;
       scanResult.textContent =
         `识别到扫描：${lastScan}\n` +
         `结束原因：${reason}\n` +
         `长度：${lastScan.length}\n` +
         `时间：${new Date().toLocaleString()}`;
-      liveStatus.textContent = "已识别一次扫描。";
+      liveStatus.textContent = "已识别一次扫描。页面仍处于全页监听状态，可继续扫描。";
     } else if (buffer.length > 0) {
       scanResult.textContent =
         `收到字符但长度不足，未判定为扫描：${buffer}\n` +
@@ -352,42 +337,46 @@
   }
 
   function scheduleDiagnosis() {
-    clearTimeout(window.__diagnoseTimer);
-    window.__diagnoseTimer = setTimeout(diagnose, 250);
+    clearTimeout(diagnoseTimer);
+    diagnoseTimer = setTimeout(diagnose, 250);
   }
 
   function diagnose() {
-    const docKeydowns = events.filter(x => x.type === "keydown");
-    const docKeypresses = events.filter(x => x.type === "keypress");
+    const keydowns = events.filter(x => x.type === "keydown");
+    const keypresses = events.filter(x => x.type === "keypress");
+    const keyups = events.filter(x => x.type === "keyup");
     const charKeydowns = events.filter(x => x.type === "keydown" && x.key && x.key.length === 1);
     const charKeypresses = events.filter(x => x.type === "keypress" && x.key && x.key.length === 1);
     const beforeInputs = events.filter(x => x.type === "beforeinput");
     const inputs = events.filter(x => x.type === "input");
     const pastes = events.filter(x => x.type === "paste");
-    const enter = events.some(x => (x.type === "keydown" || x.type === "keyup") && (x.key === "Enter" || x.keyCode === 13));
-    const tab = events.some(x => (x.type === "keydown" || x.type === "keyup") && (x.key === "Tab" || x.keyCode === 9));
+
+    const enterDown = events.some(x => x.type === "keydown" && (x.key === "Enter" || x.keyCode === 13));
+    const enterUp = events.some(x => x.type === "keyup" && (x.key === "Enter" || x.keyCode === 13));
+    const tabDown = events.some(x => x.type === "keydown" && (x.key === "Tab" || x.keyCode === 9));
     const hasResult = !!lastScan;
 
     const lines = [];
-    lines.push(`全局键盘事件：keydown=${docKeydowns.length}, keypress=${docKeypresses.length}`);
+    lines.push(`全页事件统计：keydown=${keydowns.length}, keypress=${keypresses.length}, keyup=${keyups.length}`);
     lines.push(`字符级事件：keydown字符=${charKeydowns.length}, keypress字符=${charKeypresses.length}`);
     lines.push(`输入相关事件：beforeinput=${beforeInputs.length}, input=${inputs.length}, paste=${pastes.length}`);
-    lines.push(`结束符：Enter=${enter ? "有" : "无"}, Tab=${tab ? "有" : "无"}`);
-    lines.push(`模拟 Odoo 识别：${hasResult ? "已识别 " + lastScan : "未识别"}`);
+    lines.push(`结束符：EnterDown=${enterDown ? "有" : "无"}, EnterUp=${enterUp ? "有" : "无"}, TabDown=${tabDown ? "有" : "无"}`);
+    lines.push(`模拟 Odoo 识别：${hasResult ? "已识别 " + lastScan + "，结束原因 " + lastFinishReason : "未识别"}`);
     lines.push("");
 
     if (hasResult && charKeydowns.length > 0) {
-      lines.push("判断：✅ 当前扫描输出可以被“无输入框、全局键盘监听”模式识别。");
-      lines.push("说明：这类输出更接近 Odoo Barcode 需要的逐字符 Keyboard Event / Keystroke 行为。");
-    } else if (!hasResult && (enter || tab) && charKeydowns.length === 0) {
-      lines.push("判断：❌ 只检测到 Enter/Tab 后缀，没有检测到条码正文的字符级 keydown。");
-      lines.push("说明：这通常表示条码正文可能是 KeyMultiple / chars 批量文本注入，只在输入框中有效；无输入框监听无法捕获正文。");
+      lines.push("判断：✅ 当前扫描输出可以被全页无输入框监听识别。");
+      lines.push("说明：条码正文进入了浏览器全局 keydown 字符事件，兼容 Odoo Barcode 类监听逻辑的概率较高。");
+    } else if (!hasResult && (enterDown || enterUp || tabDown) && charKeydowns.length === 0) {
+      lines.push("判断：❌ 只检测到 Enter/Tab 后缀，没有检测到条码正文字符级 keydown。");
+      lines.push("说明：这通常表示条码正文不是逐字符 Keyboard Event，可能仍是 Android KeyMultiple / chars 批量文本注入。");
+      lines.push("结论：普通输入框可能可用，但 Odoo Barcode 这类无输入框监听大概率无法识别正文。");
     } else if (!hasResult && beforeInputs.length > 0 && charKeydowns.length === 0) {
-      lines.push("判断：⚠️ 页面收到了 beforeinput，但没有收到字符级 keydown。");
+      lines.push("判断：⚠️ 收到了 beforeinput/input，但没有字符级 keydown。");
       lines.push("说明：更像文本注入/输入法提交，不是最标准的逐字符硬键盘事件。");
     } else if (!hasResult && events.length > 0) {
       lines.push("判断：⚠️ 有事件进入页面，但不足以被 Odoo-like 扫码逻辑识别。");
-      lines.push("建议：确认扫描正文是否支持逐字符 KeyDown/KeyUp；确认后缀是否为 Enter。");
+      lines.push("建议：确认扫描正文是否可切换为逐字符 KeyDown/KeyUp；后缀建议设置为 Enter。");
     } else {
       lines.push("判断：等待扫描，或扫描输出没有进入当前网页。");
     }
@@ -395,7 +384,6 @@
     diagnosis.textContent = lines.join("\n");
   }
 
-  // 同时监听 document 和 window，便于观察事件能否冒泡到全局。
   ["keydown", "keypress", "keyup"].forEach(type => {
     document.addEventListener(type, e => {
       const extra = [
@@ -405,9 +393,10 @@
         `meta=${e.metaKey}`,
         `repeat=${e.repeat}`
       ].join(" ");
-      record(e, extra, "document");
+      record(e, extra, "document-capture");
+
       if (type === "keydown") {
-        feedScannerBuffer(e, "document");
+        feedScannerBuffer(e);
       }
     }, true);
 
@@ -419,16 +408,16 @@
         `meta=${e.metaKey}`,
         `repeat=${e.repeat}`
       ].join(" ");
-      record(e, extra, "window");
+      record(e, extra, "window-bubble");
     }, false);
   });
 
   document.addEventListener("beforeinput", e => {
-    record(e, `inputType=${printable(e.inputType)} data=${printable(e.data)}`, "document");
+    record(e, `inputType=${printable(e.inputType)} data=${printable(e.data)}`, "document-capture");
   }, true);
 
   document.addEventListener("input", e => {
-    record(e, `data=${printable(e.data)} inputType=${printable(e.inputType)}`, "document");
+    record(e, `data=${printable(e.data)} inputType=${printable(e.inputType)}`, "document-capture");
   }, true);
 
   document.addEventListener("paste", e => {
@@ -436,13 +425,8 @@
     try {
       text = e.clipboardData ? e.clipboardData.getData("text") : "";
     } catch (_) {}
-    record(e, `pasteText=${printable(text)}`, "document");
+    record(e, `pasteText=${printable(text)}`, "document-capture");
   }, true);
-
-  focusBtn.addEventListener("click", () => {
-    scanArea.focus();
-    liveStatus.textContent = "监听区域已聚焦，请直接扫描。";
-  });
 
   clearBtn.addEventListener("click", () => {
     seq = 0;
@@ -450,18 +434,19 @@
     buffer = "";
     lastCharAt = 0;
     lastScan = "";
+    lastFinishReason = "";
     clearTimeout(scanTimer);
+    clearTimeout(diagnoseTimer);
     logText.value = "";
     eventTable.innerHTML = "";
-    liveStatus.textContent = "等待扫描...";
+    liveStatus.textContent = "等待扫描。当前页面任意位置都可以直接扫描。";
     scanResult.textContent = "暂无识别结果";
     diagnosis.textContent = "等待扫描...";
-    scanArea.focus();
   });
 
   copyBtn.addEventListener("click", async () => {
     const text =
-      "Odoo Barcode-like Listener Test Log\n\n" +
+      "Odoo Barcode-like Full Page Listener Test Log\n\n" +
       "Scan Result:\n" + scanResult.textContent + "\n\n" +
       "Diagnosis:\n" + diagnosis.textContent + "\n\n" +
       "Event Log:\n" + logText.value;
@@ -478,10 +463,9 @@
     preventDefaultEnabled = !preventDefaultEnabled;
     preventBtn.textContent = `切换 preventDefault：${preventDefaultEnabled ? "开启" : "关闭"}`;
     liveStatus.textContent = `preventDefault 已${preventDefaultEnabled ? "开启" : "关闭"}。请重新扫描测试。`;
-    scanArea.focus();
   });
 
-  scanArea.focus();
+  diagnose();
 })();
 </script>
 </body>
