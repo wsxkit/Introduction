@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDA Scanner Keyboard Wedge Test</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #111827;
+      background: #f3f4f6;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 8px;
+    }
+    .hint {
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 18px;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      outline: none;
+    }
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-weight: 600;
+      background: #111827;
+      color: white;
+      margin-right: 8px;
+      margin-top: 8px;
+    }
+    button.secondary {
+      background: #6b7280;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      padding: 10px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 6px;
+      text-align: left;
+      vertical-align: top;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    th {
+      background: #f9fafb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .ok { color: #047857; font-weight: 700; }
+    .warn { color: #b45309; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <h1>PDA / 扫描枪 Keyboard Wedge 测试页</h1>
+  <div class="hint">
+    用法：点击下面输入框，让光标停在输入框中，然后按 PDA 扫描键扫描条码。
+    本页面会记录 <b>keydown</b>、<b>keypress</b>、<b>keyup</b>、<b>beforeinput</b>、<b>input</b>、<b>paste</b> 等事件，用于判断扫描器是逐键 KeyEvent、批量文本注入，还是粘贴/其他方式。
+  </div>
+
+  <div class="card">
+    <label for="scanInput">扫描测试输入框</label>
+    <input id="scanInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+           placeholder="点击这里后扫描条码，例如 1234567890" autofocus />
+    <div class="row">
+      <button id="focusBtn">聚焦输入框</button>
+      <button id="clearBtn" class="secondary">清空记录</button>
+      <button id="copyBtn" class="secondary">复制日志</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>判断结果</label>
+    <div id="diagnosis" class="status">等待扫描...</div>
+  </div>
+
+  <div class="card">
+    <label>当前输入框内容</label>
+    <div id="valueBox" class="status"></div>
+  </div>
+
+  <div class="card">
+    <label>事件日志</label>
+    <textarea id="logText" readonly></textarea>
+  </div>
+
+  <div class="card">
+    <label>事件明细</label>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>time</th>
+          <th>type</th>
+          <th>key</th>
+          <th>code</th>
+          <th>keyCode</th>
+          <th>data/inputType</th>
+        </tr>
+      </thead>
+      <tbody id="eventTable"></tbody>
+    </table>
+  </div>
+
+<script>
+(() => {
+  const scanInput = document.getElementById("scanInput");
+  const clearBtn = document.getElementById("clearBtn");
+  const focusBtn = document.getElementById("focusBtn");
+  const copyBtn = document.getElementById("copyBtn");
+  const logText = document.getElementById("logText");
+  const valueBox = document.getElementById("valueBox");
+  const eventTable = document.getElementById("eventTable");
+  const diagnosis = document.getElementById("diagnosis");
+
+  let seq = 0;
+  let events = [];
+  let lastInputValue = "";
+  let scanStartTime = null;
+  let scanTimer = null;
+
+  function nowMs() {
+    return Math.round(performance.now());
+  }
+
+  function printable(v) {
+    if (v === undefined) return "";
+    if (v === null) return "null";
+    return String(v)
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t");
+  }
+
+  function log(line) {
+    logText.value += line + "\n";
+    logText.scrollTop = logText.scrollHeight;
+  }
+
+  function addTableRow(item) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.seq}</td>
+      <td>${item.t}</td>
+      <td>${item.type}</td>
+      <td>${printable(item.key)}</td>
+      <td>${printable(item.code)}</td>
+      <td>${printable(item.keyCode)}</td>
+      <td>${printable(item.extra)}</td>
+    `;
+    eventTable.appendChild(tr);
+  }
+
+  function updateValue() {
+    valueBox.textContent = scanInput.value || "(空)";
+  }
+
+  function isCharKeyEvent(e) {
+    if (!e.key) return false;
+    if (e.key.length === 1) return true;
+    return false;
+  }
+
+  function record(e, extra) {
+    if (!scanStartTime) scanStartTime = nowMs();
+
+    const item = {
+      seq: ++seq,
+      t: nowMs() + "ms",
+      type: e.type,
+      key: e.key,
+      code: e.code,
+      keyCode: e.keyCode || e.which || "",
+      extra: extra || "",
+      value: scanInput.value
+    };
+
+    events.push(item);
+
+    log(
+      `#${item.seq} ${item.t} ${item.type}` +
+      ` key=${printable(item.key)}` +
+      ` code=${printable(item.code)}` +
+      ` keyCode=${printable(item.keyCode)}` +
+      (item.extra ? ` ${item.extra}` : "") +
+      ` value="${printable(scanInput.value)}"`
+    );
+
+    addTableRow(item);
+    scheduleDiagnose();
+  }
+
+  function scheduleDiagnose() {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(diagnose, 300);
+  }
+
+  function diagnose() {
+    updateValue();
+
+    const keydownChars = events.filter(x => x.type === "keydown" && x.key && x.key.length === 1);
+    const keypressChars = events.filter(x => x.type === "keypress" && x.key && x.key.length === 1);
+    const keyups = events.filter(x => x.type === "keyup");
+    const beforeInputs = events.filter(x => x.type === "beforeinput");
+    const inputs = events.filter(x => x.type === "input");
+    const pastes = events.filter(x => x.type === "paste");
+    const enterDown = events.some(x => x.type === "keydown" && (x.key === "Enter" || x.keyCode === 13));
+    const enterUp = events.some(x => x.type === "keyup" && (x.key === "Enter" || x.keyCode === 13));
+    const tabDown = events.some(x => x.type === "keydown" && (x.key === "Tab" || x.keyCode === 9));
+
+    const beforeInputText = beforeInputs.map(x => x.extra || "").join(" | ");
+    const hasInsertText = beforeInputs.some(x => /inputType=insertText/.test(x.extra || ""));
+    const hasInsertFromPaste = beforeInputs.some(x => /insertFromPaste/.test(x.extra || "")) || pastes.length > 0;
+
+    let lines = [];
+    lines.push(`输入内容：${scanInput.value || "(空)"}`);
+    lines.push(`事件统计：keydown字符=${keydownChars.length}, keypress字符=${keypressChars.length}, keyup=${keyups.length}, beforeinput=${beforeInputs.length}, input=${inputs.length}, paste=${pastes.length}`);
+    lines.push(`结束符：Enter KeyDown=${enterDown ? "有" : "无"}, Enter KeyUp=${enterUp ? "有" : "无"}, Tab=${tabDown ? "有" : "无"}`);
+    lines.push("");
+
+    if (scanInput.value && keydownChars.length >= Math.min(scanInput.value.length, 3)) {
+      lines.push("判断：✅ 条码正文大概率是逐字符 Keyboard Event / Keystroke 输出。");
+      lines.push("说明：浏览器收到了多个字符级 keydown/keypress 事件，这类方式通常最接近标准硬键盘输入。");
+    } else if (scanInput.value && hasInsertText && keydownChars.length === 0) {
+      lines.push("判断：⚠️ 条码正文更像批量文本注入 / 输入法提交 / Android KeyMultiple chars。");
+      lines.push("说明：输入框收到了文本，但浏览器没有收到逐字符 keydown。普通输入框通常可用，但某些 Web 扫码监听可能不识别。");
+    } else if (scanInput.value && hasInsertFromPaste) {
+      lines.push("判断：⚠️ 条码正文可能是 Clipboard / Paste 粘贴方式。");
+      lines.push("说明：如果 Odoo Barcode 依赖键盘事件监听，粘贴方式可能不稳定。");
+    } else if (scanInput.value) {
+      lines.push("判断：⚠️ 已有文本进入输入框，但事件类型不典型。");
+      lines.push("说明：请把事件日志发给供应商，确认是否为 KeyMultiple / chars 或厂商扫描服务注入。");
+    } else {
+      lines.push("判断：等待扫描，或当前扫描输出没有进入浏览器输入框。");
+    }
+
+    if (enterDown || enterUp) {
+      lines.push("后缀判断：✅ 已检测到 Enter 类键盘事件。");
+    } else if (tabDown) {
+      lines.push("后缀判断：✅ 已检测到 Tab 类键盘事件。");
+    } else {
+      lines.push("后缀判断：⚠️ 未检测到 Enter/Tab 结束符，Odoo 可能无法自动提交。");
+    }
+
+    if (beforeInputText) {
+      lines.push("");
+      lines.push("beforeinput 数据摘要：");
+      lines.push(beforeInputText);
+    }
+
+    diagnosis.textContent = lines.join("\n");
+  }
+
+  ["keydown", "keypress", "keyup"].forEach(type => {
+    scanInput.addEventListener(type, e => {
+      const extra = [
+        `ctrl=${e.ctrlKey}`,
+        `shift=${e.shiftKey}`,
+        `alt=${e.altKey}`,
+        `meta=${e.metaKey}`,
+        `repeat=${e.repeat}`
+      ].join(" ");
+      record(e, extra);
+    });
+  });
+
+  scanInput.addEventListener("beforeinput", e => {
+    record(e, `inputType=${printable(e.inputType)} data=${printable(e.data)}`);
+  });
+
+  scanInput.addEventListener("input", e => {
+    const current = scanInput.value;
+    const diff = current.length - lastInputValue.length;
+    lastInputValue = current;
+    record(e, `valueLength=${current.length} diff=${diff}`);
+    updateValue();
+  });
+
+  scanInput.addEventListener("paste", e => {
+    let text = "";
+    try {
+      text = e.clipboardData ? e.clipboardData.getData("text") : "";
+    } catch (_) {}
+    record(e, `pasteText=${printable(text)}`);
+  });
+
+  clearBtn.addEventListener("click", () => {
+    seq = 0;
+    events = [];
+    scanStartTime = null;
+    lastInputValue = "";
+    scanInput.value = "";
+    logText.value = "";
+    eventTable.innerHTML = "";
+    diagnosis.textContent = "等待扫描...";
+    updateValue();
+    scanInput.focus();
+  });
+
+  focusBtn.addEventListener("click", () => scanInput.focus());
+
+  copyBtn.addEventListener("click", async () => {
+    const text =
+      "PDA Scanner Keyboard Wedge Test Log\n\n" +
+      "Diagnosis:\n" + diagnosis.textContent + "\n\n" +
+      "Log:\n" + logText.value;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("日志已复制");
+    } catch (_) {
+      alert("复制失败，请手动选择日志文本复制");
+    }
+  });
+
+  scanInput.focus();
+  updateValue();
+})();
+</script>
+</body>
+</html>
